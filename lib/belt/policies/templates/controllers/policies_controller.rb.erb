@@ -1,0 +1,12 @@
+# frozen_string_literal: true
+
+require 'belt/policies'
+
+module <%= @controller_module %>
+  # Current policies and who agreed to them. The actions (index, show,
+  # status, accept) come from Belt::Policies::Controller; define one here to
+  # override it.
+  class PoliciesController < ApplicationController
+    include Belt::Policies::Controller
+  end
+end

@@ -1,0 +1,12 @@
+# frozen_string_literal: true
+
+require 'belt/policies'
+
+# Written by `belt policies publish <%= @slug %>`. Copies every non-draft
+# policies/*.md that isn't in policy_versions yet; versions already there
+# are left alone, so this is safe to run in any environment.
+class <%= @class_name %> < Belt::Migration
+  def up
+    Belt::Policies.publish! { |line| say line }
+  end
+end

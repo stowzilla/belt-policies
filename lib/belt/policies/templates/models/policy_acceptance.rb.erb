@@ -1,0 +1,18 @@
+# frozen_string_literal: true
+
+require 'belt/policies'
+
+# One time a user agreed to a version of a policy (belt-policies): who, which
+# version and the hash of its text, when, how (via), and from which IP and
+# browser. Never changed — these rows are the record — except that
+# account_deleted_at is stamped by Belt::Policies.account_deleted!.
+#
+# Table: <app>-<env>-policy-acceptances.
+class PolicyAcceptance < ApplicationRecord
+  include Belt::Policies::AcceptanceRecord
+
+  indexes(
+    'UserIndex' => { partition_key: 'userId', sort_key: 'createdAt' },
+    'PolicyIndex' => { partition_key: 'policy', sort_key: 'createdAt' }
+  )
+end

@@ -1,0 +1,17 @@
+# frozen_string_literal: true
+
+require 'belt/policies'
+
+# Every published version of every policy (belt-policies). A row is written
+# from policies/<slug>.md by the data migration `belt policies publish`
+# creates, during `belt deploy`, and never edited afterwards: its content is
+# the exact text people agreed to. The newest row per policy is current.
+#
+# Table: <app>-<env>-policy-versions, keyed "<policy>@<version>".
+class PolicyVersion < ApplicationRecord
+  include Belt::Policies::VersionRecord
+
+  indexes(
+    'PolicyIndex' => { partition_key: 'policy', sort_key: 'publishedAt' }
+  )
+end

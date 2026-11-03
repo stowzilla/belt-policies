@@ -1,0 +1,39 @@
+AllCops:
+  NewCops: enable
+  SuggestExtensions: false
+  TargetRubyVersion: 3.3
+
+Naming/FileName:
+  Exclude:
+    - lib/belt-policies.rb
+
+Style/Documentation:
+  Enabled: false
+
+Metrics/ClassLength:
+  Max: 230
+
+Metrics/MethodLength:
+  Max: 35
+
+Metrics/AbcSize:
+  Max: 35
+
+Metrics/CyclomaticComplexity:
+  Max: 15
+
+Metrics/PerceivedComplexity:
+  Max: 15
+
+Metrics/BlockLength:
+  Exclude:
+    - spec/**/*
+    - '*.gemspec'
+
+Metrics/ParameterLists:
+  CountKeywordArgs: false
+
+Metrics/ModuleLength:
+  Max: 150
+  Exclude:
+    - lib/belt/policies/catalog.rb

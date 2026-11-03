@@ -1,0 +1,54 @@
+# Policies
+
+Your app's policies, one markdown file each, managed by
+[belt-policies](https://github.com/stowzilla/belt-policies).
+
+> **Not legal advice.** belt-policies generates outlines with placeholders and
+> records who agreed to what. It does not write your policies and cannot tell
+> you what they must say. Have a qualified attorney write or review them.
+
+## Files
+
+Each `<slug>.md` starts with YAML front matter:
+
+| Key | Meaning |
+|-----|---------|
+| `title` | Shown to people |
+| `version` | Changes every time you publish (`belt policies publish` uses today's date) |
+| `effective_date` | When it takes effect |
+| `requires_acceptance` | `true` if people must agree (terms, privacy); `false` if it is only published |
+| `requires_reacceptance` | `false` for a minor edit, so people who agreed to an earlier version aren't asked again |
+| `draft` | `true` until the text is final; drafts are never published |
+| `published_sha256` | Written by `belt policies publish`; `belt policies list` flags edits made after it |
+
+## Workflow
+
+```bash
+belt g policy terms-of-service        # outline (draft) — see `belt policies kinds`
+$EDITOR policies/terms-of-service.md  # write the real text, remove every TODO
+belt policies publish terms-of-service          # version = today, writes db/migrate/…
+belt policies publish terms-of-service --minor  # same, without asking people again
+belt deploy dev                       # the migration copies it into policy_versions
+belt policies list                    # what's here, what's draft, what changed
+```
+
+Never edit a published version in place: the stored text is what people
+agreed to. Publish a new version instead.
+
+## API
+
+| Route | Auth | |
+|-------|------|-|
+| `GET /policies` | none | Current version of every policy |
+| `GET /policies/{slug}` | none | Its text (`?version=` for an older one) |
+| `GET /policies/status` | signed in | What the user has and hasn't agreed to (`pending`) |
+| `POST /policies/accept` | signed in | `{ "policies": [{ "policy": "terms-of-service", "version": "…" }], "via": "signup" }` |
+
+Send the version the person was shown. If it is no longer current, the API
+answers 409 and records nothing.
+
+## Tables
+
+- `policy_versions` — one row per published version, with its full text and hash
+- `policy_acceptances` — one row each time someone agreed: user, email, version,
+  text hash, time, `via`, IP address, user agent
