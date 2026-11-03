@@ -1,0 +1,34 @@
+---
+title: <%= @title %>
+version: '<%= @version %>'
+effective_date: '<%= @version %>'
+requires_acceptance: <%= @requires_acceptance %>
+requires_reacceptance: true
+draft: true
+---
+<!--
+  NOT LEGAL ADVICE. belt-policies wrote this outline so there is somewhere to
+  put your <%= @title %> and a way to record who agreed to it. It is not a
+  finished policy, and nothing here was written or reviewed by a lawyer.
+  Have a qualified attorney write or review the text for your business and
+  jurisdictions before you publish it.
+
+  The headings and prompts below are topics such documents often cover. Keep,
+  change, or remove them. Every "TODO" must go before you publish.
+
+  draft: true keeps this out of policy_versions. When the text is final:
+    belt policies publish <%= @slug %>
+  which sets the version to today, drops draft, and writes the data migration
+  that publishes it on the next `belt deploy`. Comments like this one are
+  part of the published text, so delete it too.
+-->
+# <%= @title %>
+
+<%= @summary %>
+
+<% @sections.each do |heading, prompt| -%>
+## <%= heading %>
+
+TODO: <%= prompt %>
+
+<% end -%>

@@ -1,0 +1,8 @@
+# FeatureParity — this repo is tracked for feature parity.
+# Committed on purpose: it is how CI and agents know which project this code
+# belongs to without anyone passing --project. See https://featureparity.dev
+---
+project: belt-policies
+
+# Default surface for this repo, used when --surface is not given.
+surface: gem
