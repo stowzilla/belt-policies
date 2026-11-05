@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.0.3
 
 - `belt policies publish` no longer hands out a version an earlier text was
   already published as. It checks `db/migrate/*_publish_<slug>_*.rb` as well
