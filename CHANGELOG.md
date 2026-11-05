@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- `belt policies publish` no longer hands out a version an earlier text was
+  already published as. It checks `db/migrate/*_publish_<slug>_*.rb` as well
+  as the file's front matter, so after `2026-11-05.2` the next same-day
+  publish is `2026-11-05.3`, not `2026-11-05` again
+
 ## 0.0.2
 
 - Acceptances about a subject: `accept!(subject_id:, metadata:)` records one

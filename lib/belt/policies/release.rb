@@ -80,22 +80,28 @@ module Belt
       end
 
       # A version is taken once `belt policies publish` has given it to some
-      # text (draft cleared, hash recorded).
+      # text: the file's current version (draft cleared, hash recorded), or any
+      # earlier version that has a publish migration in db/migrate.
       def taken?(doc, version)
-        doc.version == version && !doc.draft? && !doc.published_sha256.nil?
+        (doc.version == version && !doc.draft? && !doc.published_sha256.nil?) || !existing_migration(version).nil?
       end
 
       def write_migration(version)
+        existing = existing_migration(version)
+        return existing if existing
+
         dir = File.join(@root, MIGRATIONS_DIR)
         FileUtils.mkdir_p(dir)
         name = migration_name(version)
-        existing = Dir.glob(File.join(dir, "*_#{name}.rb")).first
-        return existing if existing
-
         path = File.join(dir, "#{next_timestamp(dir)}_#{name}.rb")
         @class_name = name.split('_').map(&:capitalize).join
         File.write(path, ERB.new(File.read(TEMPLATE), trim_mode: '-').result(binding))
         path
+      end
+
+      def existing_migration(version)
+        pattern = /\A\d{14}_#{Regexp.escape(migration_name(version))}\.rb\z/
+        Dir.glob(File.join(@root, MIGRATIONS_DIR, '*.rb')).find { |f| File.basename(f).match?(pattern) }
       end
 
       def migration_name(version)
