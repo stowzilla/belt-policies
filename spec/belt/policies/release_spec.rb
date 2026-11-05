@@ -60,6 +60,26 @@ RSpec.describe Belt::Policies::Release do
     expect(migrations.map { |m| m[0, 14].to_i }.uniq.size).to eq(2) # migration versions never collide
   end
 
+  it 'skips versions an earlier text was published as, even after the file moved on' do
+    write("version: '1'\ndraft: true\n")
+    release
+    File.write(path, File.read(path).sub('Be nice.', 'Be kind.'))
+    release(minor: true)
+    File.write(path, File.read(path).sub('Be kind.', 'Be fair.'))
+
+    doc = release(minor: true).document
+    expect(doc.version).to eq('2026-11-02.3')
+    expect(migrations.grep(/_publish_terms_of_service_2026_11_02_3\.rb\z/).size).to eq(1)
+    expect(migrations.size).to eq(3)
+  end
+
+  it "doesn't count another policy's migrations" do
+    FileUtils.mkdir_p(File.join(@root, 'db/migrate'))
+    File.write(File.join(@root, 'db/migrate/20261102000000_publish_old_terms_of_service_2026_11_02.rb'), '')
+    write("version: '1'\ndraft: true\n")
+    expect(release.document.version).to eq('2026-11-02')
+  end
+
   it 'uses an explicit version' do
     write("version: '1'\n")
     expect(release(version: 'v2').document.version).to eq('v2')
