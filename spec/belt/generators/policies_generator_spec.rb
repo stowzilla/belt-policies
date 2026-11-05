@@ -62,6 +62,16 @@ RSpec.describe Belt::Generators::PoliciesGenerator do
     expect(File).to exist('lambda/controllers/app/policies_controller.rb')
   end
 
+  # fp:install_policies_without_authorizer
+  it 'with --auth none, writes open routes and a controller that asks the app for the user' do
+    run_generator('--auth', 'none')
+
+    expect(File.read('config/routes.rb')).to include("post 'policies/accept', to: 'policies#accept', auth: :none")
+    controller = File.read('lambda/controllers/api/policies_controller.rb')
+    expect(controller).to include('def policies_user_id', 'raise NotImplementedError', 'def policies_user_email')
+    expect(RubyVM::InstructionSequence.compile(controller)).to be_truthy
+  end
+
   it 'outlines policies passed with --with' do
     run_generator('--with', 'tos,privacy')
     expect(Dir.glob('policies/*.md')).to eq(%w[policies/README.md policies/privacy-policy.md

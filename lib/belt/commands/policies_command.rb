@@ -20,6 +20,7 @@ module Belt
         when 'list', 'ls', nil then list
         when 'kinds' then kinds
         when 'publish' then publish(args)
+        when 'check' then check
         when 'help', '--help', '-h' then help
         else
           warn "Unknown command. Run `belt policies help`.\n"
@@ -55,6 +56,24 @@ module Belt
         return 'ready (no publish migration yet — run `belt policies publish`)' if doc.published_sha256.nil?
 
         'published'
+      end
+
+      # For CI: fail when a published policy's text was edited without
+      # publishing a new version. Reads the files only, no database.
+      def check
+        edited = Belt::Policies::Document.all(dir).select(&:edited_since_published?)
+        if edited.empty?
+          puts "✓ Every published policy in #{relative(dir)}/ matches its published text."
+          return
+        end
+
+        edited.each do |doc|
+          warn "✗ #{relative(doc.path)}: text differs from published version #{doc.version}. " \
+               "Publish a new version (`belt policies publish #{doc.slug}`) or undo the edit."
+        end
+        exit 1
+      rescue Belt::Policies::InvalidDocument => e
+        abort "Error: #{e.message}"
       end
 
       def kinds
@@ -94,6 +113,8 @@ module Belt
           Commands:
             list                   Policies in policies/ with version and state
             kinds                  Policies `belt g policy` can outline
+            check                  Exit non-zero if a published policy's text was edited
+                                   without a new version (for CI)
             publish SLUG [...]     Give it a new version (today's date), clear draft, and
                                    write the db/migrate file that publishes it on deploy
               --minor              Don't ask people who accepted an earlier version again

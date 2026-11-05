@@ -30,6 +30,7 @@ belt policies publish terms-of-service          # version = today, writes db/mig
 belt policies publish terms-of-service --minor  # same, without asking people again
 belt deploy dev                       # the migration copies it into policy_versions
 belt policies list                    # what's here, what's draft, what changed
+belt policies check                   # in CI: fails if published text was edited
 ```
 
 Never edit a published version in place: the stored text is what people
@@ -41,8 +42,8 @@ agreed to. Publish a new version instead.
 |-------|------|-|
 | `GET /policies` | none | Current version of every policy |
 | `GET /policies/{slug}` | none | Its text (`?version=` for an older one) |
-| `GET /policies/status` | signed in | What the user has and hasn't agreed to (`pending`) |
-| `POST /policies/accept` | signed in | `{ "policies": [{ "policy": "terms-of-service", "version": "…" }], "via": "signup" }` |
+| `GET /policies/status` | signed in | What the user has and hasn't agreed to (`pending`); `?subject_id=` for a subject |
+| `POST /policies/accept` | signed in | `{ "policies": [{ "policy": "terms-of-service", "version": "…" }], "via": "signup" }`, plus optional `subject_id` and `metadata` |
 
 Send the version the person was shown. If it is no longer current, the API
 answers 409 and records nothing.
@@ -51,4 +52,4 @@ answers 409 and records nothing.
 
 - `policy_versions` — one row per published version, with its full text and hash
 - `policy_acceptances` — one row each time someone agreed: user, email, version,
-  text hash, time, `via`, IP address, user agent
+  text hash, time, `via`, IP address, user agent, and the subject it was about

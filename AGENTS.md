@@ -26,10 +26,11 @@ lib/
 │   ├── acceptance_record.rb            # mixed into the app's PolicyAcceptance model
 │   ├── controller.rb                   # index/show/status/accept actions
 │   ├── require_acceptance.rb           # before_action guard
+│   ├── legacy_and_retention.rb         # import_acceptance!, expire_deleted!
 │   └── templates/                      # ERB copied into apps
 ├── belt/generators/policies_generator.rb   # belt g policies (install)
 ├── belt/generators/policy_generator.rb     # belt g policy <kind>
-└── belt/commands/policies_command.rb       # belt policies list|kinds|publish
+└── belt/commands/policies_command.rb       # belt policies list|kinds|publish|check
 ```
 
 ## Design rules
@@ -39,7 +40,8 @@ lib/
   model files must keep a literal `class X < ApplicationRecord` and a
   single-quoted `indexes(...)` call.
 - **The gem talks to models through a few class methods**: `find_version`,
-  `all_versions`, `create_version!`, `for_user`, `record!`. Specs use
+  `all_versions`, `create_version!`, `for_user`, `record!`, `deleted_before`,
+  `expire!`. Specs use
   in-memory fakes of exactly those (`spec/support/fake_models.rb`). Add a
   method to the record concern and the fake together.
 - **Published text is immutable.** `Publisher` never overwrites a version. It
@@ -48,7 +50,8 @@ lib/
   `belt deploy`), so every environment gets the same versions with no extra
   deploy hook. Each migration just calls `Belt::Policies.publish!`, which is
   idempotent.
-- **Acceptance rows are append-only**, apart from `account_deleted_at`.
+- **Acceptance rows are append-only**, apart from `account_deleted_at`, and
+  `expire_deleted!` deleting stamped rows after the retention period.
 
 ## Workflow
 

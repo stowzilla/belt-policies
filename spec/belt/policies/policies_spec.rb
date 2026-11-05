@@ -123,6 +123,73 @@ RSpec.describe Belt::Policies do
     end
   end
 
+  describe 'acceptances about a subject' do
+    before { FakePolicyVersion.publish('parent-notice', '1') }
+
+    def consent(child, **options)
+      accept('parent-1', %w[parent-notice], subject_id: child, **options)
+    end
+
+    # fp:record_subject_acceptance
+    it 'records a separate acceptance for each subject under the same version' do
+      consent('child-a', metadata: { terms_version: '3' })
+      consent('child-b')
+      expect(consent('child-a')).to eq([])
+
+      expect(FakePolicyAcceptance.rows.map(&:subject_id)).to eq(%w[child-a child-b])
+      expect(FakePolicyAcceptance.rows.first.metadata).to eq('terms_version' => '3')
+    end
+
+    # fp:record_subject_acceptance
+    it 'filters history by subject' do
+      accept('parent-1', %w[parent-notice])
+      consent('child-a')
+
+      expect(described_class.history_for('parent-1').size).to eq(2)
+      expect(described_class.history_for('parent-1', subject_id: 'child-a').map(&:subject_id)).to eq(%w[child-a])
+    end
+
+    # fp:subject_policy_status
+    it "keeps a subject's status apart from the account's" do
+      consent('child-a')
+
+      expect(described_class.pending_for('parent-1').map(&:policy)).to eq(%w[parent-notice])
+      expect(described_class.accepted?('parent-1', 'parent-notice', subject_id: 'child-a')).to be(true)
+      expect(described_class.accepted?('parent-1', 'parent-notice', subject_id: 'child-b')).to be(false)
+      expect(described_class.status_for('parent-1', subject_id: 'child-a')[:pending]).to eq([])
+    end
+
+    it 'refuses metadata that is not a hash' do
+      expect { consent('child-a', metadata: 'x') }.to raise_error(ArgumentError)
+    end
+  end
+
+  describe '.import_acceptance!' do
+    def import(**options)
+      described_class.import_acceptance!(user_id: 'user-1', policy: 'terms-of-service', version: '2025-06-01',
+                                         accepted_at: '2025-07-14T09:30:00Z', **options)
+    end
+
+    # fp:import_legacy_acceptance
+    it 'records an earlier acceptance with its original date and no stored text, once' do
+      row = import(metadata: { source: 'terms_acceptances' })
+      expect(import).to be_nil
+
+      expect(FakePolicyAcceptance.rows).to eq([row])
+      expect(row).to have_attributes(
+        policy_version_id: 'terms-of-service@2025-06-01', accepted_at: '2025-07-14T09:30:00Z',
+        accepted_via: 'import', content_sha256: nil, metadata: { 'source' => 'terms_acceptances' }
+      )
+    end
+
+    # fp:import_legacy_acceptance
+    it 'counts toward the current version when it was published under the same version' do
+      FakePolicyVersion.publish('terms-of-service', '2025-06-01')
+      import
+      expect(described_class.pending_for('user-1')).to be_empty
+    end
+  end
+
   describe '.account_deleted!' do
     it 'stamps the rows without removing them' do
       FakePolicyVersion.publish('terms-of-service', '1')
@@ -130,6 +197,31 @@ RSpec.describe Belt::Policies do
       described_class.account_deleted!('user-1', at: at)
 
       expect(FakePolicyAcceptance.rows.map(&:account_deleted_at)).to eq(['2026-11-02T12:00:00Z'])
+    end
+  end
+
+  # fp:expire_deleted_acceptances
+  describe '.expire_deleted!' do
+    let(:now) { Time.utc(2029, 11, 2, 12) }
+    let(:three_years) { 3 * 365 * 86_400 }
+
+    before { FakePolicyVersion.publish('terms-of-service', '1') }
+
+    it 'deletes rows stamped before the cutoff, page by page, and counts them' do
+      %w[old-1 old-2 old-3 recent].each { |user| accept(user) }
+      %w[old-1 old-2 old-3].each { |user| described_class.account_deleted!(user, at: Time.utc(2026, 1, 1)) }
+      described_class.account_deleted!('recent', at: Time.utc(2029, 1, 1))
+      accept('active')
+
+      expect(described_class.expire_deleted!(older_than: three_years, now: now)).to eq(3)
+      expect(FakePolicyAcceptance.rows.map(&:user_id)).to contain_exactly('recent', 'active')
+    end
+
+    it 'takes a cutoff time' do
+      accept
+      described_class.account_deleted!('user-1', at: Time.utc(2026, 1, 1))
+      expect(described_class.expire_deleted!(older_than: Time.utc(2025, 1, 1))).to eq(0)
+      expect(described_class.expire_deleted!(older_than: Time.utc(2027, 1, 1))).to eq(1)
     end
   end
 
