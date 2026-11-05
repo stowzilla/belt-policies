@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'time'
+
 require_relative 'policies/version'
 require_relative 'policies/configuration'
 require_relative 'policies/document'
@@ -10,6 +12,7 @@ require_relative 'policies/publisher'
 require_relative 'policies/request_details'
 require_relative 'policies/controller'
 require_relative 'policies/require_acceptance'
+require_relative 'policies/legacy_and_retention'
 
 module Belt
   # Versioned policies (Terms of Service, Privacy Policy, …) and the record of
@@ -49,6 +52,8 @@ module Belt
     end
 
     class << self
+      include LegacyAndRetention
+
       attr_writer :configuration
 
       def configuration
@@ -104,8 +109,12 @@ module Belt
       #   { policies: [{ policy:, version:, title:, requires_acceptance:, accepted:,
       #                  accepted_version:, accepted_at: }, …],
       #     pending: ['terms-of-service', …] }
-      def status_for(user_id)
-        acceptances = acceptances_for(user_id).group_by(&:policy)
+      #
+      # Only the user's own acceptances count. Pass subject_id: to ask about
+      # acceptances made about a subject instead (a parent's consent for one
+      # child).
+      def status_for(user_id, subject_id: nil)
+        acceptances = acceptances_about(user_id, subject_id).group_by(&:policy)
         policies = current.values.sort_by(&:policy).map do |version|
           mine = acceptances.fetch(version.policy, [])
           latest = mine.max_by { |a| a.accepted_at.to_s }
@@ -119,9 +128,10 @@ module Belt
         { policies: policies, pending: policies.select { |p| p[:pending] }.map { |p| p[:policy] } }
       end
 
-      # The current versions this user still has to agree to.
-      def pending_for(user_id)
-        acceptances = acceptances_for(user_id).group_by(&:policy)
+      # The current versions this user still has to agree to (about
+      # subject_id, when given).
+      def pending_for(user_id, subject_id: nil)
+        acceptances = acceptances_about(user_id, subject_id).group_by(&:policy)
         current.values.sort_by(&:policy).select do |version|
           needs_acceptance?(version, acceptances.fetch(version.policy, []))
         end
@@ -129,8 +139,8 @@ module Belt
 
       # True when the user has nothing left to agree to (or, given a policy,
       # has agreed to that one's current version).
-      def accepted?(user_id, policy = nil)
-        pending = pending_for(user_id).map(&:policy)
+      def accepted?(user_id, policy = nil, subject_id: nil)
+        pending = pending_for(user_id, subject_id: subject_id).map(&:policy)
         policy ? !pending.include?(policy.to_s) : pending.empty?
       end
 
@@ -146,7 +156,14 @@ module Belt
       # it must be the current one (StaleVersion otherwise), so a person is
       # never recorded agreeing to text they didn't see. Agreeing again to a
       # version already accepted records nothing new. Returns the new rows.
-      def accept!(user_id:, policies:, via:, email: nil, ip_address: nil, user_agent: nil, at: Time.now.utc)
+      #
+      # subject_id: records an acceptance about someone or something other
+      # than the user, e.g. a parent's consent for one child
+      # (subject_id: 'child-abc123'). Each subject gets its own row, so a
+      # second child under the same notice is recorded too. metadata: is a
+      # hash of app-specific fields kept on the row.
+      def accept!(user_id:, policies:, via:, email: nil, ip_address: nil, user_agent: nil, subject_id: nil,
+                  metadata: nil, at: Time.now.utc)
         raise ArgumentError, 'user_id is required' if user_id.to_s.empty?
 
         requested = Array(policies).map { |entry| normalize_request(entry) }
@@ -154,13 +171,16 @@ module Belt
 
         versions = requested.map { |policy, version| resolve_current(policy, version) }
         details = { email: presence(email), accepted_at: at.utc.iso8601, accepted_via: via.to_s,
-                    ip_address: presence(ip_address), user_agent: presence(user_agent) }.compact
+                    ip_address: presence(ip_address), user_agent: presence(user_agent),
+                    subject_id: presence(subject_id), metadata: normalize_metadata(metadata) }.compact
         record_acceptances(user_id, versions.uniq(&:policy), details)
       end
 
-      # Every time this user agreed to anything, newest first.
-      def history_for(user_id)
-        acceptances_for(user_id)
+      # Every time this user agreed to anything, newest first. With
+      # subject_id:, only the acceptances about that subject.
+      def history_for(user_id, subject_id: nil)
+        rows = acceptances_for(user_id)
+        subject_id.nil? ? rows : rows.select { |a| a.subject_id.to_s == subject_id.to_s }
       end
 
       # Stamp a deleted account's acceptance rows so a retention job can
@@ -187,7 +207,7 @@ module Belt
       private
 
       def record_acceptances(user_id, versions, details)
-        already = acceptances_for(user_id).to_set { |a| version_id(a.policy, a.version) }
+        already = acceptances_about(user_id, details[:subject_id]).to_set { |a| version_id(a.policy, a.version) }
         versions.reject { |v| already.include?(version_id(v.policy, v.version)) }.map do |version|
           configuration.acceptance_class.record!(
             user_id: user_id, policy: version.policy, version: version.version,
@@ -211,6 +231,19 @@ module Belt
         return [] if user_id.to_s.empty?
 
         configuration.acceptance_class.for_user(user_id)
+      end
+
+      # The user's acceptances about subject_id; nil means about the account
+      # itself, so rows about a subject never satisfy the user's own policies.
+      def acceptances_about(user_id, subject_id)
+        acceptances_for(user_id).select { |a| presence(a.subject_id) == presence(subject_id) }
+      end
+
+      def normalize_metadata(metadata)
+        return nil if metadata.nil?
+        raise ArgumentError, 'metadata must be a hash' unless metadata.is_a?(Hash)
+
+        metadata.empty? ? nil : metadata.transform_keys(&:to_s)
       end
 
       def normalize_request(entry)

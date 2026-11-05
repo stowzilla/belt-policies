@@ -39,7 +39,9 @@ module Belt
 
           Options:
             --gateway NAME     Gateway to add the routes to (default: the first in config/routes.rb)
-            --auth NAME        Authorizer for status/accept (default: cognito)
+            --auth NAME        Authorizer for status/accept (default: cognito). `none` for apps
+                               without a gateway authorizer: the controller asks your app for
+                               the user (policies_user_id / policies_user_email)
             --with LIST        Also outline these policies, e.g. --with terms-of-service,privacy-policy
             --skip-routes      Don't touch config/routes.rb
             --force            Overwrite existing files
@@ -61,6 +63,7 @@ module Belt
           Examples:
             belt g policies
             belt g policies --with terms,privacy
+            belt g policies --auth none
             belt d policies
         HELP
       end
@@ -97,6 +100,10 @@ module Belt
       end
 
       private
+
+      def auth_none?
+        @auth == 'none'
+      end
 
       def controller_path
         "lambda/controllers/#{@gateway}/policies_controller.rb"
@@ -220,7 +227,11 @@ module Belt
           To block signed-in users until they accept, in ApplicationController:
             include Belt::Policies::RequireAcceptance
             before_action :require_current_policies!
+          (or prompt instead of blocking: see "Prompt, don't block" in the belt-policies README)
         DONE
+        return unless auth_none?
+
+        puts "\nNo authorizer (--auth none): return the signed-in user from policies_user_id in #{controller_path}."
       end
     end
   end

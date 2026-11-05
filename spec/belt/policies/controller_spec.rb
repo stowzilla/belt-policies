@@ -16,6 +16,26 @@ class SpecGuardedController < BeltController::Base
   end
 end
 
+class SpecPickyPoliciesController < BeltController::Base
+  include Belt::Policies::Controller
+
+  private
+
+  def policies_may_accept?(subject_id)
+    subject_id != 'someone-elses-child'
+  end
+end
+
+class SpecPartlyGuardedController < BeltController::Base
+  include Belt::Policies::RequireAcceptance
+
+  before_action :require_current_policies!, except: %i[play]
+
+  def play
+    success_response(ok: true)
+  end
+end
+
 class SpecGuardedPoliciesController < SpecGuardedController
   include Belt::Policies::Controller
 end
@@ -95,6 +115,29 @@ RSpec.describe Belt::Policies::Controller do
     expect(call(:status).first).to eq(401)
   end
 
+  # fp:record_subject_acceptance
+  it 'records an acceptance about a subject and reports that subject\'s status' do
+    status, body = call(:accept, user: 'parent-1',
+                                 body: { 'policies' => ['terms-of-service'], 'subject_id' => 'child-a',
+                                         'metadata' => { 'terms_version' => '3' } })
+    expect(status).to eq(200)
+    expect(body['pending']).to eq([])
+    expect(FakePolicyAcceptance.rows.last).to have_attributes(subject_id: 'child-a',
+                                                              metadata: { 'terms_version' => '3' })
+
+    expect(call(:status, user: 'parent-1').last['pending']).to eq(%w[terms-of-service])
+    expect(call(:status, user: 'parent-1', query: { 'subject_id' => 'child-a' }).last['pending']).to eq([])
+  end
+
+  # fp:refuse_policy_acceptance
+  it 'answers 403 and records nothing when the app refuses the acceptance' do
+    status, body = call(:accept, controller: SpecPickyPoliciesController, user: 'parent-1',
+                                 body: { 'policies' => ['terms-of-service'], 'subject_id' => 'someone-elses-child' })
+    expect(status).to eq(403)
+    expect(body.dig('details', 'code')).to eq('acceptance_not_allowed')
+    expect(FakePolicyAcceptance.rows).to be_empty
+  end
+
   it "reports the signed-in user's pending policies" do
     _, body = call(:status, user: 'user-1')
     expect(body['pending']).to eq(%w[terms-of-service])
@@ -113,6 +156,10 @@ RSpec.describe Belt::Policies::Controller do
       Belt::Policies.accept!(user_id: 'user-1', policies: %w[terms-of-service], via: 'prompt')
       expect(call(:index, controller: SpecGuardedController, user: 'user-1').first).to eq(200)
       expect(call(:index, controller: SpecGuardedController).first).to eq(200)
+    end
+
+    it 'leaves actions excluded with except: open' do
+      expect(call(:play, controller: SpecPartlyGuardedController, user: 'user-1').first).to eq(200)
     end
 
     it 'leaves the policies routes open so pending users can accept' do

@@ -8,5 +8,21 @@ module <%= @controller_module %>
   # override it.
   class PoliciesController < ApplicationController
     include Belt::Policies::Controller
+<% if auth_none? -%>
+
+    private
+
+    # The gateway has no authorizer (--auth none), so there are no token
+    # claims to read. Return the signed-in user's id from however this app
+    # authenticates; nil answers 401.
+    def policies_user_id
+      raise NotImplementedError, "#{self.class}#policies_user_id: return the signed-in user's id"
+    end
+
+    # Stored on the acceptance record. nil is fine.
+    def policies_user_email
+      nil
+    end
+<% end -%>
   end
 end

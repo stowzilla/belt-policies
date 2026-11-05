@@ -52,7 +52,7 @@ end
 
 class FakePolicyAcceptance < FakeRecord
   attr_accessor :id, :user_id, :email, :policy, :version, :policy_version_id, :content_sha256,
-                :accepted_at, :accepted_via, :ip_address, :user_agent, :account_deleted_at
+                :accepted_at, :accepted_via, :ip_address, :user_agent, :subject_id, :metadata, :account_deleted_at
 
   include Belt::Policies::AcceptanceRecord
 
@@ -62,5 +62,14 @@ class FakePolicyAcceptance < FakeRecord
 
   def self.record!(attributes)
     new(attributes.merge(id: "acc-#{rows.size + 1}")).tap { |row| rows << row }
+  end
+
+  # Pages of two, so specs exercise more than one page.
+  def self.deleted_before(cutoff, &)
+    rows.select { |row| row.account_deleted_at && row.account_deleted_at < cutoff }.each_slice(2, &)
+  end
+
+  def self.expire!(row)
+    rows.delete(row)
   end
 end
